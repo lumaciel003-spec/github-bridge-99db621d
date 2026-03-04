@@ -23,35 +23,46 @@ function sanitizeHtml(html: string): string {
   return sanitized;
 }
 
-// Validate admin token by calling admin-auth function
-async function validateAdminToken(token: string | null): Promise<boolean> {
-  if (!token) {
-    console.log("No token provided for validation");
-    return false;
+// Validate admin access - check password directly or validate HMAC token
+async function validateAdminAccess(body: Record<string, unknown>): Promise<boolean> {
+  // Method 1: Direct password validation (most reliable)
+  const adminPasswordFromRequest = body.admin_password as string;
+  const adminPassword = Deno.env.get("ADMIN_PASSWORD");
+  
+  if (adminPasswordFromRequest && adminPassword && adminPasswordFromRequest === adminPassword) {
+    console.log("Admin access validated via direct password");
+    return true;
   }
 
-  try {
-    // Call admin-auth to validate the token
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    console.log("Validating token via admin-auth...");
-    const response = await fetch(`${supabaseUrl}/functions/v1/admin-auth`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseAnonKey}`,
-      },
-      body: JSON.stringify({ action: "validate", token }),
-    });
-
-    const data = await response.json();
-    console.log("admin-auth validation response:", JSON.stringify(data));
-    return data.valid === true;
-  } catch (error) {
-    console.error("Error validating token via admin-auth:", error);
-    return false;
+  // Method 2: HMAC token validation (fallback)
+  const token = body.token as string;
+  if (token) {
+    try {
+      const parts = token.split(".");
+      if (parts.length === 2) {
+        const [payloadB64, sigB64] = parts;
+        const pwd = adminPassword || "";
+        const encoder = new TextEncoder();
+        const keyData = encoder.encode(pwd + "_signing_secret_v1");
+        const key = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+        const sigBytes = Uint8Array.from(atob(sigB64), c => c.charCodeAt(0));
+        const valid = await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(payloadB64));
+        if (valid) {
+          const payload = JSON.parse(atob(payloadB64));
+          const now = Math.floor(Date.now() / 1000);
+          if (now <= payload.exp) {
+            console.log("Admin access validated via HMAC token");
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Token validation error:", e);
+    }
   }
+
+  console.log("Admin access validation failed - ADMIN_PASSWORD env exists:", !!adminPassword);
+  return false;
 }
 
 serve(async (req) => {
@@ -67,12 +78,12 @@ serve(async (req) => {
     const body = await req.json();
     const { action, data, token } = body;
     
-    console.log(`Admin events v3 - action: ${action}, token present: ${!!token}`);
+    console.log(`Admin events v4 - action: ${action}`);
 
-    // Validate token for all actions
-    const isValidToken = await validateAdminToken(token);
-    if (!isValidToken) {
-      console.log("Unauthorized: invalid or missing token");
+    // Validate admin access (password or token)
+    const isValid = await validateAdminAccess(body);
+    if (!isValid) {
+      console.log("Unauthorized: validation failed");
       return new Response(
         JSON.stringify({ success: false, error: "Não autorizado. Faça login novamente." }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }

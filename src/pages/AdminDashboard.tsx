@@ -88,6 +88,7 @@ const AdminDashboard = () => {
 
   const handleLogout = () => {
     sessionStorage.removeItem("admin_token");
+    sessionStorage.removeItem("admin_password");
     navigate("/gw-admin-2025");
   };
 
