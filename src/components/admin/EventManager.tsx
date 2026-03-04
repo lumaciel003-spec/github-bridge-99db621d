@@ -110,10 +110,19 @@ const EventManager = () => {
     return sessionStorage.getItem("admin_token");
   };
 
+  const getAdminPassword = () => {
+    return sessionStorage.getItem("admin_password");
+  };
+
   const invokeAdminEvents = async (body: Record<string, unknown>) => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-    console.log("invokeAdminEvents - sending request with token length:", String(body.token || "").length);
+    // Send both token and password for validation
+    const enrichedBody = {
+      ...body,
+      admin_password: getAdminPassword(),
+    };
+    console.log("invokeAdminEvents - sending request");
     const response = await fetch(`${supabaseUrl}/functions/v1/admin-events`, {
       method: "POST",
       headers: {
@@ -121,14 +130,13 @@ const EventManager = () => {
         "apikey": supabaseKey,
         "Authorization": `Bearer ${supabaseKey}`,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(enrichedBody),
     });
     const data = await response.json();
     console.log("invokeAdminEvents - response:", { status: response.status, data });
     if (!response.ok) {
       if (response.status === 401) {
         console.error("Admin events returned 401:", data);
-        // Show the actual error instead of silently redirecting
         throw new Error(data?.error || "Não autorizado");
       }
       throw new Error(data?.error || "Erro desconhecido");
@@ -171,17 +179,22 @@ const EventManager = () => {
     
     setUploading(type);
     try {
-      const token = getAdminToken();
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('token', token || '');
+      formData.append('admin_password', getAdminPassword() || '');
       formData.append('type', type);
 
-      const { data, error } = await supabase.functions.invoke("admin-upload", {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const response = await fetch(`${supabaseUrl}/functions/v1/admin-upload`, {
+        method: "POST",
+        headers: {
+          "apikey": supabaseKey,
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
         body: formData,
       });
-
-      if (error) throw error;
+      const data = await response.json();
       if (!data.success) throw new Error(data.error);
 
       const fieldMap = {
@@ -215,17 +228,22 @@ const EventManager = () => {
       const file = new File([blob], `${type}-${Date.now()}.${fileExt}`, { type: blob.type });
 
       // Use the secure upload function
-      const token = getAdminToken();
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('token', token || '');
+      formData.append('admin_password', getAdminPassword() || '');
       formData.append('type', type);
 
-      const { data, error } = await supabase.functions.invoke("admin-upload", {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const uploadResponse = await fetch(`${supabaseUrl}/functions/v1/admin-upload`, {
+        method: "POST",
+        headers: {
+          "apikey": supabaseKey,
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
         body: formData,
       });
-
-      if (error) throw error;
+      const data = await uploadResponse.json();
       if (!data.success) throw new Error(data.error);
 
       const fieldMap = {

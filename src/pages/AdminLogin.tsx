@@ -39,6 +39,7 @@ const AdminLogin = () => {
 
       if (data.success) {
         sessionStorage.setItem("admin_token", data.token);
+        sessionStorage.setItem("admin_password", password);
         toast({
           title: "Sucesso",
           description: "Login realizado com sucesso",

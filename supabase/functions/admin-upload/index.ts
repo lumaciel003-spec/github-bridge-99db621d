@@ -6,32 +6,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Validate admin token by calling admin-auth function
-async function validateAdminToken(token: string | null): Promise<boolean> {
-  if (!token) {
-    console.log("No token provided for validation");
-    return false;
+// Validate admin access - check password directly
+function validateAdminAccess(password: string | null): boolean {
+  const adminPassword = Deno.env.get("ADMIN_PASSWORD");
+  if (password && adminPassword && password === adminPassword) {
+    console.log("Admin upload access validated");
+    return true;
   }
-
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    const response = await fetch(`${supabaseUrl}/functions/v1/admin-auth`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseAnonKey}`,
-      },
-      body: JSON.stringify({ action: "validate", token }),
-    });
-
-    const data = await response.json();
-    return data.valid === true;
-  } catch (error) {
-    console.error("Error validating token via admin-auth:", error);
-    return false;
-  }
+  console.log("Admin upload access denied - password match:", password === adminPassword, "ADMIN_PASSWORD exists:", !!adminPassword);
+  return false;
 }
 
 serve(async (req) => {
@@ -47,15 +30,16 @@ serve(async (req) => {
     // Parse multipart form data
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+    const adminPassword = formData.get("admin_password") as string | null;
     const token = formData.get("token") as string | null;
     const imageType = formData.get("type") as string | null;
 
     console.log(`Admin upload request - type: ${imageType}`);
 
-    // Validate token
-    const isValidToken = await validateAdminToken(token);
-    if (!isValidToken) {
-      console.log("Unauthorized: invalid or missing token");
+    // Validate access
+    const isValid = validateAdminAccess(adminPassword);
+    if (!isValid) {
+      console.log("Unauthorized upload attempt");
       return new Response(
         JSON.stringify({ success: false, error: "Não autorizado. Faça login novamente." }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
