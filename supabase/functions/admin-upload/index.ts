@@ -3,10 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Validate admin token by calling admin-auth function
+// Validate admin token using HMAC signature (stateless)
 async function validateAdminToken(token: string | null): Promise<boolean> {
   if (!token) {
     console.log("No token provided for validation");
@@ -14,21 +14,32 @@ async function validateAdminToken(token: string | null): Promise<boolean> {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    
-    const response = await fetch(`${supabaseUrl}/functions/v1/admin-auth`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-      },
-      body: JSON.stringify({ action: 'validate', token }),
-    });
+    const parts = token.split(".");
+    if (parts.length !== 2) return false;
 
-    const result = await response.json();
-    console.log("Token validation result:", result.valid);
-    return result.valid === true;
+    const [payloadB64, sigB64] = parts;
+
+    const adminPassword = Deno.env.get("ADMIN_PASSWORD") || "";
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(adminPassword + "_signing_secret_v1");
+    const key = await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+
+    const sigBytes = Uint8Array.from(atob(sigB64), c => c.charCodeAt(0));
+    const valid = await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(payloadB64));
+    if (!valid) return false;
+
+    const payload = JSON.parse(atob(payloadB64));
+    const now = Math.floor(Date.now() / 1000);
+    if (now > payload.exp) return false;
+
+    console.log("Token validation successful");
+    return true;
   } catch (error) {
     console.error("Error validating token:", error);
     return false;

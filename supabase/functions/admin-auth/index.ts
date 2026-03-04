@@ -1,27 +1,65 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// In-memory token storage (for session validation)
-// In production, consider using a database table for persistence
-const validTokens = new Map<string, { createdAt: number; expiresAt: number }>();
+// Token expiration time (8 hours) in seconds
+const TOKEN_EXPIRY_SECONDS = 8 * 60 * 60;
 
-// Token expiration time (8 hours)
-const TOKEN_EXPIRY_MS = 8 * 60 * 60 * 1000;
+async function getSigningKey(): Promise<CryptoKey> {
+  const adminPassword = Deno.env.get("ADMIN_PASSWORD") || "";
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(adminPassword + "_signing_secret_v1");
+  return await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
 
-// Clean up expired tokens periodically
-const cleanupExpiredTokens = () => {
-  const now = Date.now();
-  for (const [token, data] of validTokens.entries()) {
-    if (now > data.expiresAt) {
-      validTokens.delete(token);
-    }
+async function createSignedToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const exp = now + TOKEN_EXPIRY_SECONDS;
+  const payload = JSON.stringify({ iat: now, exp });
+  const payloadB64 = btoa(payload);
+
+  const key = await getSigningKey();
+  const encoder = new TextEncoder();
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payloadB64));
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(signature)));
+
+  return `${payloadB64}.${sigB64}`;
+}
+
+async function verifySignedToken(token: string): Promise<boolean> {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 2) return false;
+
+    const [payloadB64, sigB64] = parts;
+
+    // Verify signature
+    const key = await getSigningKey();
+    const encoder = new TextEncoder();
+    const sigBytes = Uint8Array.from(atob(sigB64), c => c.charCodeAt(0));
+    const valid = await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(payloadB64));
+    if (!valid) return false;
+
+    // Check expiration
+    const payload = JSON.parse(atob(payloadB64));
+    const now = Math.floor(Date.now() / 1000);
+    if (now > payload.exp) return false;
+
+    return true;
+  } catch (error) {
+    console.error("Token verification error:", error);
+    return false;
   }
-};
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -34,31 +72,18 @@ serve(async (req) => {
 
     // Handle token validation
     if (action === "validate") {
-      cleanupExpiredTokens();
-      
       if (!token) {
         console.log("Token validation failed: no token provided");
         return new Response(
           JSON.stringify({ valid: false }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      const tokenData = validTokens.get(token);
-      const now = Date.now();
-      
-      if (!tokenData || now > tokenData.expiresAt) {
-        console.log("Token validation failed: token invalid or expired");
-        validTokens.delete(token);
-        return new Response(
-          JSON.stringify({ valid: false }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      console.log("Token validation successful");
+      const isValid = await verifySignedToken(token);
+      console.log("Token validation result:", isValid);
       return new Response(
-        JSON.stringify({ valid: true }),
+        JSON.stringify({ valid: isValid }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -75,20 +100,8 @@ serve(async (req) => {
     }
 
     if (password === adminPassword) {
-      // Generate a secure session token
-      const newToken = crypto.randomUUID();
-      const now = Date.now();
-      
-      // Store token with expiration
-      validTokens.set(newToken, {
-        createdAt: now,
-        expiresAt: now + TOKEN_EXPIRY_MS
-      });
-
-      // Cleanup old tokens
-      cleanupExpiredTokens();
-
-      console.log("Login successful, token generated");
+      const newToken = await createSignedToken();
+      console.log("Login successful, signed token generated");
       
       return new Response(
         JSON.stringify({ success: true, token: newToken }),
