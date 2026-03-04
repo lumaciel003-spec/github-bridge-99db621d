@@ -110,6 +110,30 @@ const EventManager = () => {
     return sessionStorage.getItem("admin_token");
   };
 
+  const invokeAdminEvents = async (body: Record<string, unknown>) => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const response = await fetch(`${supabaseUrl}/functions/v1/admin-events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": supabaseKey,
+        "Authorization": `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      if (response.status === 401) {
+        sessionStorage.removeItem("admin_token");
+        window.location.href = "/gw-admin-2025";
+        return null;
+      }
+      throw new Error(data?.error || "Erro desconhecido");
+    }
+    return data;
+  };
+
   useEffect(() => {
     fetchEvents();
   }, []);
@@ -123,28 +147,13 @@ const EventManager = () => {
         window.location.href = "/gw-admin-2025";
         return;
       }
-      const { data, error } = await supabase.functions.invoke("admin-events", {
-        body: { action: "list_events", token },
-      });
 
-      console.log("fetchEvents response:", { data, error });
+      const data = await invokeAdminEvents({ action: "list_events", token });
+      if (!data) return; // redirected to login
+      
+      console.log("fetchEvents response:", data);
 
-      if (error) {
-        // If it's an auth error, redirect to login
-        console.error("Function invoke error:", error);
-        if (error.message?.includes("401") || error.message?.includes("unauthorized") || error.message?.includes("Unauthorized")) {
-          sessionStorage.removeItem("admin_token");
-          window.location.href = "/gw-admin-2025";
-          return;
-        }
-        throw error;
-      }
       if (!data?.success) {
-        if (data?.error?.includes("autorizado")) {
-          sessionStorage.removeItem("admin_token");
-          window.location.href = "/gw-admin-2025";
-          return;
-        }
         throw new Error(data?.error || "Erro desconhecido");
       }
       setEvents(data.events || []);
@@ -246,11 +255,9 @@ const EventManager = () => {
       const eventData = selectedEvent ? { ...eventForm, id: selectedEvent.id } : eventForm;
       const token = getAdminToken();
 
-      const { data, error } = await supabase.functions.invoke("admin-events", {
-        body: { action, data: eventData, token },
-      });
+      const data = await invokeAdminEvents({ action, data: eventData, token });
+      if (!data) return;
 
-      if (error) throw error;
       if (data.success) {
         toast({ title: "Sucesso", description: selectedEvent ? "Evento atualizado!" : "Evento criado!" });
         setShowEventDialog(false);
@@ -268,11 +275,9 @@ const EventManager = () => {
 
     try {
       const token = getAdminToken();
-      const { data, error } = await supabase.functions.invoke("admin-events", {
-        body: { action: "delete_event", data: { id: eventId }, token },
-      });
+      const data = await invokeAdminEvents({ action: "delete_event", data: { id: eventId }, token });
+      if (!data) return;
 
-      if (error) throw error;
       if (data.success) {
         toast({ title: "Sucesso", description: "Evento excluído!" });
         fetchEvents();
@@ -308,11 +313,9 @@ const EventManager = () => {
       };
       const token = getAdminToken();
 
-      const { data, error } = await supabase.functions.invoke("admin-events", {
-        body: { action, data: ticketData, token },
-      });
+      const data = await invokeAdminEvents({ action, data: ticketData, token });
+      if (!data) return;
 
-      if (error) throw error;
       if (data.success) {
         toast({ title: "Sucesso", description: selectedTicket ? "Ingresso atualizado!" : "Ingresso criado!" });
         setShowTicketDialog(false);
@@ -330,11 +333,9 @@ const EventManager = () => {
 
     try {
       const token = getAdminToken();
-      const { data, error } = await supabase.functions.invoke("admin-events", {
-        body: { action: "delete_ticket_type", data: { id: ticketId }, token },
-      });
+      const data = await invokeAdminEvents({ action: "delete_ticket_type", data: { id: ticketId }, token });
+      if (!data) return;
 
-      if (error) throw error;
       if (data.success) {
         toast({ title: "Sucesso", description: "Ingresso excluído!" });
         fetchEvents();
