@@ -113,6 +113,7 @@ const EventManager = () => {
   const invokeAdminEvents = async (body: Record<string, unknown>) => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    console.log("invokeAdminEvents - sending request with token length:", String(body.token || "").length);
     const response = await fetch(`${supabaseUrl}/functions/v1/admin-events`, {
       method: "POST",
       headers: {
@@ -123,11 +124,12 @@ const EventManager = () => {
       body: JSON.stringify(body),
     });
     const data = await response.json();
+    console.log("invokeAdminEvents - response:", { status: response.status, data });
     if (!response.ok) {
       if (response.status === 401) {
-        sessionStorage.removeItem("admin_token");
-        window.location.href = "/gw-admin-2025";
-        return null;
+        console.error("Admin events returned 401:", data);
+        // Show the actual error instead of silently redirecting
+        throw new Error(data?.error || "Não autorizado");
       }
       throw new Error(data?.error || "Erro desconhecido");
     }
@@ -149,7 +151,6 @@ const EventManager = () => {
       }
 
       const data = await invokeAdminEvents({ action: "list_events", token });
-      if (!data) return; // redirected to login
       
       console.log("fetchEvents response:", data);
 
@@ -157,9 +158,9 @@ const EventManager = () => {
         throw new Error(data?.error || "Erro desconhecido");
       }
       setEvents(data.events || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching events:", error);
-      toast({ title: "Erro", description: "Erro ao carregar eventos. Tente fazer login novamente.", variant: "destructive" });
+      toast({ title: "Erro", description: error?.message || "Erro ao carregar eventos.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
