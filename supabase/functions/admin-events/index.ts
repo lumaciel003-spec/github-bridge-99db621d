@@ -12,31 +12,18 @@ const ALLOWED_ATTRS = ['class', 'style'];
 
 function sanitizeHtml(html: string): string {
   if (!html) return '';
-  
-  // Remove script tags and their content
   let sanitized = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  
-  // Remove event handlers (onclick, onerror, etc.)
   sanitized = sanitized.replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, '');
   sanitized = sanitized.replace(/\s*on\w+\s*=\s*[^\s>]*/gi, '');
-  
-  // Remove javascript: URLs
   sanitized = sanitized.replace(/javascript\s*:/gi, '');
-  
-  // Remove data: URLs in src attributes (can be used for XSS)
   sanitized = sanitized.replace(/src\s*=\s*["']data:[^"']*["']/gi, 'src=""');
-  
-  // Remove iframe, object, embed, form tags
   sanitized = sanitized.replace(/<(iframe|object|embed|form|input|button|textarea|select|meta|link|base)[^>]*>/gi, '');
   sanitized = sanitized.replace(/<\/(iframe|object|embed|form|input|button|textarea|select|meta|link|base)>/gi, '');
-  
-  // Remove img tags with onerror
   sanitized = sanitized.replace(/<img[^>]*onerror[^>]*>/gi, '');
-  
   return sanitized;
 }
 
-// Validate admin token using HMAC signature (stateless - no server memory needed)
+// Validate admin token by calling admin-auth function
 async function validateAdminToken(token: string | null): Promise<boolean> {
   if (!token) {
     console.log("No token provided for validation");
@@ -44,51 +31,25 @@ async function validateAdminToken(token: string | null): Promise<boolean> {
   }
 
   try {
-    const parts = token.split(".");
-    console.log(`Token parts count: ${parts.length}`);
-    if (parts.length !== 2) {
-      console.log("Token format invalid - expected 2 parts");
-      return false;
-    }
-
-    const [payloadB64, sigB64] = parts;
-
-    // Derive signing key from ADMIN_PASSWORD
-    const adminPassword = Deno.env.get("ADMIN_PASSWORD") || "";
-    console.log(`ADMIN_PASSWORD length: ${adminPassword.length}, empty: ${adminPassword === ""}`);
+    // Call admin-auth to validate the token
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(adminPassword + "_signing_secret_v1");
-    const key = await crypto.subtle.importKey(
-      "raw",
-      keyData,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"]
-    );
+    console.log("Validating token via admin-auth...");
+    const response = await fetch(`${supabaseUrl}/functions/v1/admin-auth`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ action: "validate", token }),
+    });
 
-    // Verify signature
-    const sigBytes = Uint8Array.from(atob(sigB64), c => c.charCodeAt(0));
-    const valid = await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(payloadB64));
-    console.log(`Signature verification result: ${valid}`);
-    if (!valid) {
-      console.log("Token signature invalid");
-      return false;
-    }
-
-    // Check expiration
-    const payload = JSON.parse(atob(payloadB64));
-    const now = Math.floor(Date.now() / 1000);
-    console.log(`Token exp: ${payload.exp}, now: ${now}, expired: ${now > payload.exp}`);
-    if (now > payload.exp) {
-      console.log("Token expired");
-      return false;
-    }
-
-    console.log("Token validation successful");
-    return true;
+    const data = await response.json();
+    console.log("admin-auth validation response:", JSON.stringify(data));
+    return data.valid === true;
   } catch (error) {
-    console.error("Error validating token:", error);
+    console.error("Error validating token via admin-auth:", error);
     return false;
   }
 }
@@ -106,7 +67,7 @@ serve(async (req) => {
     const body = await req.json();
     const { action, data, token } = body;
     
-    console.log(`Admin events v2 (HMAC) - action: ${action}, token length: ${token?.length || 0}`);
+    console.log(`Admin events v3 - action: ${action}, token present: ${!!token}`);
 
     // Validate token for all actions
     const isValidToken = await validateAdminToken(token);
