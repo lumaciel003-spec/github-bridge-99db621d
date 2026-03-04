@@ -45,12 +45,18 @@ async function validateAdminToken(token: string | null): Promise<boolean> {
 
   try {
     const parts = token.split(".");
-    if (parts.length !== 2) return false;
+    console.log(`Token parts count: ${parts.length}`);
+    if (parts.length !== 2) {
+      console.log("Token format invalid - expected 2 parts");
+      return false;
+    }
 
     const [payloadB64, sigB64] = parts;
 
     // Derive signing key from ADMIN_PASSWORD
     const adminPassword = Deno.env.get("ADMIN_PASSWORD") || "";
+    console.log(`ADMIN_PASSWORD length: ${adminPassword.length}, empty: ${adminPassword === ""}`);
+    
     const encoder = new TextEncoder();
     const keyData = encoder.encode(adminPassword + "_signing_secret_v1");
     const key = await crypto.subtle.importKey(
@@ -64,6 +70,7 @@ async function validateAdminToken(token: string | null): Promise<boolean> {
     // Verify signature
     const sigBytes = Uint8Array.from(atob(sigB64), c => c.charCodeAt(0));
     const valid = await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(payloadB64));
+    console.log(`Signature verification result: ${valid}`);
     if (!valid) {
       console.log("Token signature invalid");
       return false;
@@ -72,6 +79,7 @@ async function validateAdminToken(token: string | null): Promise<boolean> {
     // Check expiration
     const payload = JSON.parse(atob(payloadB64));
     const now = Math.floor(Date.now() / 1000);
+    console.log(`Token exp: ${payload.exp}, now: ${now}, expired: ${now > payload.exp}`);
     if (now > payload.exp) {
       console.log("Token expired");
       return false;
@@ -98,7 +106,7 @@ serve(async (req) => {
     const body = await req.json();
     const { action, data, token } = body;
     
-    console.log(`Admin events action: ${action}`);
+    console.log(`Admin events v2 (HMAC) - action: ${action}, token length: ${token?.length || 0}`);
 
     // Validate token for all actions
     const isValidToken = await validateAdminToken(token);
