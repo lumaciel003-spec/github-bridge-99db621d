@@ -118,22 +118,39 @@ const EventManager = () => {
     setLoading(true);
     try {
       const token = getAdminToken();
+      if (!token) {
+        console.warn("No admin token found, redirecting to login");
+        window.location.href = "/gw-admin-2025";
+        return;
+      }
       const { data, error } = await supabase.functions.invoke("admin-events", {
         body: { action: "list_events", token },
       });
 
-      if (error) throw error;
-      if (!data.success && data.error?.includes("autorizado")) {
-        sessionStorage.removeItem("admin_token");
-        window.location.reload();
-        return;
+      console.log("fetchEvents response:", { data, error });
+
+      if (error) {
+        // If it's an auth error, redirect to login
+        console.error("Function invoke error:", error);
+        if (error.message?.includes("401") || error.message?.includes("unauthorized") || error.message?.includes("Unauthorized")) {
+          sessionStorage.removeItem("admin_token");
+          window.location.href = "/gw-admin-2025";
+          return;
+        }
+        throw error;
       }
-      if (data.success) {
-        setEvents(data.events || []);
+      if (!data?.success) {
+        if (data?.error?.includes("autorizado")) {
+          sessionStorage.removeItem("admin_token");
+          window.location.href = "/gw-admin-2025";
+          return;
+        }
+        throw new Error(data?.error || "Erro desconhecido");
       }
+      setEvents(data.events || []);
     } catch (error) {
       console.error("Error fetching events:", error);
-      toast({ title: "Erro", description: "Erro ao carregar eventos", variant: "destructive" });
+      toast({ title: "Erro", description: "Erro ao carregar eventos. Tente fazer login novamente.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
