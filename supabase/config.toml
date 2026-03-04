@@ -1,0 +1,19 @@
+project_id = "urktmzyjqcsuiyizumom"
+
+[functions.create-pix-payment]
+verify_jwt = false
+
+[functions.pix-webhook]
+verify_jwt = false
+
+[functions.admin-auth]
+verify_jwt = false
+
+[functions.admin-events]
+verify_jwt = false
+
+[functions.admin-upload]
+verify_jwt = false
+
+[functions.image-proxy]
+verify_jwt = false
