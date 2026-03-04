@@ -107,7 +107,7 @@ const EventManager = () => {
   });
 
   const getAdminToken = () => {
-    return sessionStorage.getItem("adminToken");
+    return sessionStorage.getItem("admin_token");
   };
 
   useEffect(() => {
@@ -124,7 +124,7 @@ const EventManager = () => {
 
       if (error) throw error;
       if (!data.success && data.error?.includes("autorizado")) {
-        sessionStorage.removeItem("adminToken");
+        sessionStorage.removeItem("admin_token");
         window.location.reload();
         return;
       }
