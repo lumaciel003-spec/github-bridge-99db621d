@@ -802,6 +802,9 @@ const EventManager = () => {
                 <Button variant="ghost" size="icon" onClick={() => openEditEvent(event)} className="text-slate-400 hover:text-white">
                   <Pencil className="h-4 w-4" />
                 </Button>
+                <Button variant="ghost" size="icon" onClick={() => handleCloneEvent(event)} className="text-blue-400 hover:text-blue-300" title="Clonar evento">
+                  <Copy className="h-4 w-4" />
+                </Button>
                 <Button variant="ghost" size="icon" onClick={() => handleDeleteEvent(event.id)} className="text-red-400 hover:text-red-300">
                   <Trash2 className="h-4 w-4" />
                 </Button>
