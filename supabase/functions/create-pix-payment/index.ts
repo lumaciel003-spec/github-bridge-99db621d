@@ -45,7 +45,7 @@ async function sendToUtmify(orderData: {
   const utmifyApiKey = Deno.env.get('UTMIFY_API_KEY');
   
   if (!utmifyApiKey) {
-    console.error('UTMIFY_API_KEY not configured');
+    console.log('UTMIFY_API_KEY not configured, skipping');
     return { success: false, error: 'Missing API key' };
   }
 
@@ -73,13 +73,8 @@ async function sendToUtmify(orderData: {
       priceInCents: p.priceInCents
     })),
     trackingParameters: {
-      src: null,
-      sck: null,
-      utm_source: null,
-      utm_campaign: null,
-      utm_medium: null,
-      utm_content: null,
-      utm_term: null
+      src: null, sck: null,
+      utm_source: null, utm_campaign: null, utm_medium: null, utm_content: null, utm_term: null
     },
     commission: {
       totalPriceInCents: orderData.totalPriceInCents,
@@ -88,48 +83,34 @@ async function sendToUtmify(orderData: {
     }
   };
 
-  console.log('Sending to Utmify:', JSON.stringify(utmifyPayload));
-
   try {
     const response = await fetch('https://api.utmify.com.br/api-credentials/orders', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-token': utmifyApiKey
-      },
+      headers: { 'Content-Type': 'application/json', 'x-api-token': utmifyApiKey },
       body: JSON.stringify(utmifyPayload)
     });
-
     const responseText = await response.text();
-    console.log('Utmify response status:', response.status);
-    console.log('Utmify response:', responseText);
-
-    return { 
-      success: response.ok, 
-      status: response.status,
-      response: responseText 
-    };
+    console.log('Utmify response:', response.status, responseText);
+    return { success: response.ok, status: response.status, response: responseText };
   } catch (error) {
     console.error('Error sending to Utmify:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return { success: false, error: errorMessage };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const publicKey = Deno.env.get('FREEPAY_PUBLIC_KEY');
-    const secretKey = Deno.env.get('FREEPAY_SECRET_KEY');
+    const secretKey = Deno.env.get('GHOSTSPAY_SECRET_KEY');
+    const companyId = Deno.env.get('GHOSTSPAY_COMPANY_ID');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!publicKey || !secretKey) {
-      console.error('Missing FreePay API credentials');
+    if (!secretKey || !companyId) {
+      console.error('Missing GhostsPay API credentials');
       return new Response(
         JSON.stringify({ error: 'Missing API credentials' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -145,79 +126,69 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
     const { amount, customerName, customerEmail, customerCpf, customerPhone, eventId, items }: PaymentRequest = await req.json();
 
-    console.log('Creating PIX payment:', { amount, customerName, customerEmail, eventId, itemsCount: items.length });
+    console.log('Creating PIX payment via GhostsPay:', { amount, customerName, customerEmail, eventId, itemsCount: items.length });
 
-    // Create Basic Auth header
-    const credentials = btoa(`${publicKey}:${secretKey}`);
+    // GhostsPay uses Basic Auth: secretKey:companyId
+    const credentials = btoa(`${secretKey}:${companyId}`);
 
-    // Generate unique transaction ID
-    const transactionId = `PIX_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
-    // Build items array for FreePay
-    const freePayItems = items.map(item => ({
+    // Build items array for GhostsPay (prices in cents)
+    const ghostsPayItems = items.map(item => ({
       title: item.name,
-      unit_price: Math.round(item.price * 100), // Convert to cents
+      unitPrice: Math.round(item.price * 100),
       quantity: item.quantity,
-      tangible: false,
-      external_ref: transactionId
+      externalRef: `gw_${Date.now()}`
     }));
 
-    // Build request body with correct snake_case format
+    const amountInCents = Math.round(amount * 100);
+
+    // Build request body per GhostsPay API docs
     const requestBody = {
-      payment_method: 'pix',
+      paymentMethod: 'PIX',
       customer: {
-        document: {
-          type: 'cpf',
-          number: customerCpf.replace(/\D/g, ''), // Remove non-digits
-        },
         name: customerName,
         email: customerEmail,
-        phone: customerPhone.replace(/\D/g, ''), // Remove non-digits
+        phone: customerPhone.replace(/\D/g, ''),
+        document: customerCpf.replace(/\D/g, ''),
       },
-      items: freePayItems,
+      items: ghostsPayItems,
+      amount: amountInCents,
+      postbackUrl: `${supabaseUrl}/functions/v1/pix-webhook`,
       metadata: {
-        provider_name: 'GuicheWeb',
         source: 'guicheweb',
-        event: 'ahh-verao',
-        internal_transaction_id: transactionId,
+        eventId: eventId || null,
         customerName,
         customerEmail,
         customerCpf: customerCpf.replace(/\D/g, ''),
         customerPhone: customerPhone.replace(/\D/g, ''),
         items: JSON.stringify(items)
       },
-      amount: Math.round(amount * 100), // Convert to cents
-      postback_url: `${supabaseUrl}/functions/v1/pix-webhook`,
       ip: '127.0.0.1',
-      installments: 1,
-      pix: {
-        expires_in_days: 1
-      }
+      description: `Ingresso GuicheWeb`
     };
 
-    console.log('Request body:', JSON.stringify(requestBody));
+    console.log('GhostsPay request body:', JSON.stringify(requestBody));
 
-    // Call FreePay API
-    const freePayResponse = await fetch('https://api.freepaybrasil.com/v1/payment-transaction/create', {
+    // Call GhostsPay API
+    const ghostsPayResponse = await fetch('https://api.ghostspaysv2.com/functions/v1/transactions', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${credentials}`,
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       body: JSON.stringify(requestBody),
     });
 
-    console.log('FreePay response status:', freePayResponse.status);
-    
-    const responseText = await freePayResponse.text();
-    console.log('FreePay response text:', responseText);
-    
-    let freePayData;
+    console.log('GhostsPay response status:', ghostsPayResponse.status);
+
+    const responseText = await ghostsPayResponse.text();
+    console.log('GhostsPay response text:', responseText);
+
+    let ghostsPayData;
     try {
-      freePayData = responseText ? JSON.parse(responseText) : {};
+      ghostsPayData = responseText ? JSON.parse(responseText) : {};
     } catch (parseError) {
       console.error('Failed to parse response:', parseError);
       return new Response(
@@ -226,49 +197,50 @@ serve(async (req) => {
       );
     }
 
-    if (!freePayResponse.ok || !freePayData.success) {
-      console.error('FreePay API error:', freePayData);
-      
-      // Check for CPF validation errors
-      const errorMessage = JSON.stringify(freePayData).toLowerCase();
-      const isCpfError = errorMessage.includes('cpf') || 
-                         errorMessage.includes('document') || 
-                         errorMessage.includes('invalid') ||
-                         errorMessage.includes('customer');
-      
+    if (!ghostsPayResponse.ok) {
+      console.error('GhostsPay API error:', ghostsPayData);
+
+      const errorMessage = JSON.stringify(ghostsPayData).toLowerCase();
+      const isCpfError = errorMessage.includes('cpf') || errorMessage.includes('document') || errorMessage.includes('invalid');
+
       return new Response(
-        JSON.stringify({ 
-          error: isCpfError ? 'CPF inválido ou incorreto' : 'Failed to create PIX payment', 
-          details: freePayData,
-          isCpfError 
+        JSON.stringify({
+          error: isCpfError ? 'CPF inválido ou incorreto' : 'Failed to create PIX payment',
+          details: ghostsPayData,
+          isCpfError
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Extract QR Code from FreePay response (data.pix.qr_code)
-    const pixData = freePayData.data?.pix;
-    const copiaCola = pixData?.qr_code;
+    // GhostsPay response: data.pix.qrcode contains the PIX copia-e-cola / QR code URL
+    const transactionData = ghostsPayData.data || ghostsPayData;
+    const transactionId = transactionData.id;
+    const pixData = transactionData.pix;
+    const copiaCola = pixData?.qrcode;
 
     if (!copiaCola) {
-      console.error('Missing QR code data in response:', freePayData);
+      console.error('Missing QR code data in response:', ghostsPayData);
       return new Response(
-        JSON.stringify({ 
-          error: 'Invalid response from payment provider',
-          debug: freePayData 
-        }),
+        JSON.stringify({ error: 'Invalid response from payment provider', debug: ghostsPayData }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Generate QR code URL from the PIX code
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(copiaCola)}`;
+    // Generate QR code image URL from the PIX code
+    const qrCodeUrl = copiaCola.startsWith('http')
+      ? copiaCola  // GhostsPay may return a URL directly
+      : `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(copiaCola)}`;
 
-    // Save order to database with pending status
+    // For copia-e-cola, if it's a URL we need the actual PIX code
+    // GhostsPay returns the qrcode field which can be either a URL or the PIX payload
+    const pixCopiaCola = copiaCola.startsWith('http') ? copiaCola : copiaCola;
+
+    // Save order to database
     const { error: insertError } = await supabase
       .from('orders')
       .insert({
-        transaction_id: freePayData.data?.id || transactionId,
+        transaction_id: transactionId || `GS_${Date.now()}`,
         customer_name: customerName,
         customer_email: customerEmail,
         customer_cpf: customerCpf.replace(/\D/g, ''),
@@ -281,12 +253,11 @@ serve(async (req) => {
 
     if (insertError) {
       console.error('Error saving order to database:', insertError);
-      // Continue anyway - payment was created successfully
     } else {
       console.log('Order saved to database with pending status');
     }
 
-    // Send waiting_payment notification to Utmify
+    // Send waiting_payment to Utmify
     const createdAtUTC = new Date().toISOString().replace('T', ' ').substring(0, 19);
     const utmifyProducts = items.map((item, index) => ({
       id: `ticket_${index}`,
@@ -296,7 +267,7 @@ serve(async (req) => {
     }));
 
     const utmifyResult = await sendToUtmify({
-      orderId: freePayData.data?.id || transactionId,
+      orderId: transactionId || `GS_${Date.now()}`,
       status: 'waiting_payment',
       createdAt: createdAtUTC,
       approvedDate: null,
@@ -308,8 +279,8 @@ serve(async (req) => {
         document: customerCpf.replace(/\D/g, '')
       },
       products: utmifyProducts,
-      totalPriceInCents: Math.round(amount * 100),
-      gatewayFeeInCents: Math.round(amount * 100 * 0.0299) // ~3% fee estimate
+      totalPriceInCents: amountInCents,
+      gatewayFeeInCents: Math.round(amountInCents * 0.0299)
     });
 
     console.log('Utmify waiting_payment result:', utmifyResult);
@@ -317,18 +288,17 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         qrCode: qrCodeUrl,
-        copiaCola,
-        transactionId: freePayData.data?.id || transactionId,
-        status: freePayData.data?.status || 'PENDING',
-        externalId: freePayData.data?.id
+        copiaCola: pixCopiaCola,
+        transactionId: transactionId,
+        status: transactionData.status || 'pending',
+        externalId: transactionId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('Error in create-pix-payment function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
