@@ -456,6 +456,8 @@ const EventManager = () => {
       toast({ title: "Erro", description: error?.message || "Erro ao clonar ingresso", variant: "destructive" });
     }
   };
+
+  const resetEventForm = () => {
     setEventForm({
       name: "", slug: "", description: "", location: "",
       event_date: "", event_time: "", opening_time: "",
