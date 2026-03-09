@@ -365,7 +365,97 @@ const EventManager = () => {
     }
   };
 
-  const resetEventForm = () => {
+  const handleCloneEvent = async (event: Event) => {
+    if (!confirm(`Deseja clonar o evento "${event.name}"? Todos os ingressos também serão clonados.`)) return;
+
+    try {
+      const token = getAdminToken();
+      // Create cloned event
+      const clonedEventData = {
+        name: `${event.name} (Cópia)`,
+        slug: `${event.slug}-copia-${Date.now()}`,
+        description: event.description || "",
+        location: event.location,
+        event_date: event.event_date,
+        event_time: event.event_time,
+        opening_time: event.opening_time || "",
+        banner_url: event.banner_url || "",
+        cover_url: event.cover_url || "",
+        map_url: event.map_url || "",
+        event_map_url: event.event_map_url || "",
+        instagram_url: event.instagram_url || "",
+        facebook_url: event.facebook_url || "",
+        youtube_url: event.youtube_url || "",
+        google_maps_embed: event.google_maps_embed || "",
+        is_active: false,
+        show_on_home: false,
+      };
+
+      const data = await invokeAdminEvents({ action: "create_event", data: clonedEventData, token });
+      if (!data?.success) throw new Error(data?.error || "Erro ao clonar evento");
+
+      const newEventId = data.event.id;
+
+      // Clone all ticket types
+      if (event.ticket_types && event.ticket_types.length > 0) {
+        for (const ticket of event.ticket_types) {
+          await invokeAdminEvents({
+            action: "create_ticket_type",
+            data: {
+              event_id: newEventId,
+              sector: ticket.sector,
+              name: ticket.name,
+              description: ticket.description || "",
+              price: ticket.price,
+              fee: ticket.fee || 0,
+              available: ticket.available,
+              color: ticket.color || "#3B82F6",
+              batch: ticket.batch || "Lote 1",
+              sort_order: ticket.sort_order || 0,
+              is_active: ticket.is_active,
+            },
+            token,
+          });
+        }
+      }
+
+      toast({ title: "Sucesso", description: `Evento "${event.name}" clonado com ${event.ticket_types?.length || 0} ingressos!` });
+      fetchEvents();
+    } catch (error: any) {
+      console.error("Error cloning event:", error);
+      toast({ title: "Erro", description: error?.message || "Erro ao clonar evento", variant: "destructive" });
+    }
+  };
+
+  const handleCloneTicket = async (event: Event, ticket: TicketType) => {
+    try {
+      const token = getAdminToken();
+      const data = await invokeAdminEvents({
+        action: "create_ticket_type",
+        data: {
+          event_id: event.id,
+          sector: ticket.sector,
+          name: `${ticket.name} (Cópia)`,
+          description: ticket.description || "",
+          price: ticket.price,
+          fee: ticket.fee || 0,
+          available: ticket.available,
+          color: ticket.color || "#3B82F6",
+          batch: ticket.batch || "Lote 1",
+          sort_order: (ticket.sort_order || 0) + 1,
+          is_active: ticket.is_active,
+        },
+        token,
+      });
+      if (!data?.success) throw new Error(data?.error || "Erro ao clonar ingresso");
+
+      toast({ title: "Sucesso", description: `Ingresso "${ticket.name}" clonado!` });
+      fetchEvents();
+    } catch (error: any) {
+      console.error("Error cloning ticket:", error);
+      toast({ title: "Erro", description: error?.message || "Erro ao clonar ingresso", variant: "destructive" });
+    }
+  };
     setEventForm({
       name: "", slug: "", description: "", location: "",
       event_date: "", event_time: "", opening_time: "",
