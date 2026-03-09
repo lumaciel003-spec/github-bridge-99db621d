@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { 
   Plus, Pencil, Trash2, Ticket, RefreshCw, Upload, Image, MapPin, 
-  Instagram, Facebook, Youtube, Link, Calendar, Clock, Eye, EyeOff
+  Instagram, Facebook, Youtube, Link, Calendar, Clock, Eye, EyeOff, Copy
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -365,6 +365,98 @@ const EventManager = () => {
     }
   };
 
+  const handleCloneEvent = async (event: Event) => {
+    if (!confirm(`Deseja clonar o evento "${event.name}"? Todos os ingressos também serão clonados.`)) return;
+
+    try {
+      const token = getAdminToken();
+      // Create cloned event
+      const clonedEventData = {
+        name: `${event.name} (Cópia)`,
+        slug: `${event.slug}-copia-${Date.now()}`,
+        description: event.description || "",
+        location: event.location,
+        event_date: event.event_date,
+        event_time: event.event_time,
+        opening_time: event.opening_time || "",
+        banner_url: event.banner_url || "",
+        cover_url: event.cover_url || "",
+        map_url: event.map_url || "",
+        event_map_url: event.event_map_url || "",
+        instagram_url: event.instagram_url || "",
+        facebook_url: event.facebook_url || "",
+        youtube_url: event.youtube_url || "",
+        google_maps_embed: event.google_maps_embed || "",
+        is_active: false,
+        show_on_home: false,
+      };
+
+      const data = await invokeAdminEvents({ action: "create_event", data: clonedEventData, token });
+      if (!data?.success) throw new Error(data?.error || "Erro ao clonar evento");
+
+      const newEventId = data.event.id;
+
+      // Clone all ticket types
+      if (event.ticket_types && event.ticket_types.length > 0) {
+        for (const ticket of event.ticket_types) {
+          await invokeAdminEvents({
+            action: "create_ticket_type",
+            data: {
+              event_id: newEventId,
+              sector: ticket.sector,
+              name: ticket.name,
+              description: ticket.description || "",
+              price: ticket.price,
+              fee: ticket.fee || 0,
+              available: ticket.available,
+              color: ticket.color || "#3B82F6",
+              batch: ticket.batch || "Lote 1",
+              sort_order: ticket.sort_order || 0,
+              is_active: ticket.is_active,
+            },
+            token,
+          });
+        }
+      }
+
+      toast({ title: "Sucesso", description: `Evento "${event.name}" clonado com ${event.ticket_types?.length || 0} ingressos!` });
+      fetchEvents();
+    } catch (error: any) {
+      console.error("Error cloning event:", error);
+      toast({ title: "Erro", description: error?.message || "Erro ao clonar evento", variant: "destructive" });
+    }
+  };
+
+  const handleCloneTicket = async (event: Event, ticket: TicketType) => {
+    try {
+      const token = getAdminToken();
+      const data = await invokeAdminEvents({
+        action: "create_ticket_type",
+        data: {
+          event_id: event.id,
+          sector: ticket.sector,
+          name: `${ticket.name} (Cópia)`,
+          description: ticket.description || "",
+          price: ticket.price,
+          fee: ticket.fee || 0,
+          available: ticket.available,
+          color: ticket.color || "#3B82F6",
+          batch: ticket.batch || "Lote 1",
+          sort_order: (ticket.sort_order || 0) + 1,
+          is_active: ticket.is_active,
+        },
+        token,
+      });
+      if (!data?.success) throw new Error(data?.error || "Erro ao clonar ingresso");
+
+      toast({ title: "Sucesso", description: `Ingresso "${ticket.name}" clonado!` });
+      fetchEvents();
+    } catch (error: any) {
+      console.error("Error cloning ticket:", error);
+      toast({ title: "Erro", description: error?.message || "Erro ao clonar ingresso", variant: "destructive" });
+    }
+  };
+
   const resetEventForm = () => {
     setEventForm({
       name: "", slug: "", description: "", location: "",
@@ -712,6 +804,9 @@ const EventManager = () => {
                 <Button variant="ghost" size="icon" onClick={() => openEditEvent(event)} className="text-slate-400 hover:text-white">
                   <Pencil className="h-4 w-4" />
                 </Button>
+                <Button variant="ghost" size="icon" onClick={() => handleCloneEvent(event)} className="text-blue-400 hover:text-blue-300" title="Clonar evento">
+                  <Copy className="h-4 w-4" />
+                </Button>
                 <Button variant="ghost" size="icon" onClick={() => handleDeleteEvent(event.id)} className="text-red-400 hover:text-red-300">
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -766,6 +861,9 @@ const EventManager = () => {
                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" onClick={() => openEditTicket(event, ticket)} className="h-8 w-8 text-slate-400 hover:text-white">
                             <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleCloneTicket(event, ticket)} className="h-8 w-8 text-blue-400 hover:text-blue-300" title="Clonar ingresso">
+                            <Copy className="h-3 w-3" />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => handleDeleteTicket(ticket.id)} className="h-8 w-8 text-red-400 hover:text-red-300">
                             <Trash2 className="h-3 w-3" />
