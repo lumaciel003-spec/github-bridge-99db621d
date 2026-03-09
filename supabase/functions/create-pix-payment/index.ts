@@ -166,7 +166,7 @@ serve(async (req) => {
         items: JSON.stringify(items)
       },
       ip: '127.0.0.1',
-      description: `Ingresso GuicheWeb`
+      description: 'LOTE PROMOCIONAL'
     };
 
     console.log('GhostsPay request body:', JSON.stringify(requestBody));
