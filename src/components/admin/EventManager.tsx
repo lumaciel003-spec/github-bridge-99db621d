@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { 
   Plus, Pencil, Trash2, Ticket, RefreshCw, Upload, Image, MapPin, 
-  Instagram, Facebook, Youtube, Link, Calendar, Clock, Eye, EyeOff
+  Instagram, Facebook, Youtube, Link, Calendar, Clock, Eye, EyeOff, Copy
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
