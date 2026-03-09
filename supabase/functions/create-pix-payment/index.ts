@@ -133,16 +133,15 @@ serve(async (req) => {
     // GhostsPay uses Basic Auth: secretKey:companyId
     const credentials = btoa(`${secretKey}:${companyId}`);
 
+    const amountInCents = Math.round(amount * 100);
+
     // Build items array for GhostsPay - always use generic product name
-    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
     const ghostsPayItems = [{
       title: 'LOTE PROMOCIONAL',
       unitPrice: amountInCents,
       quantity: 1,
       externalRef: `gw_${Date.now()}`
     }];
-
-    const amountInCents = Math.round(amount * 100);
 
     // Build request body per GhostsPay API docs
     const requestBody = {
