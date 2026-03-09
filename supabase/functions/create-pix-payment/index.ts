@@ -133,13 +133,14 @@ serve(async (req) => {
     // GhostsPay uses Basic Auth: secretKey:companyId
     const credentials = btoa(`${secretKey}:${companyId}`);
 
-    // Build items array for GhostsPay (prices in cents)
-    const ghostsPayItems = items.map(item => ({
-      title: item.name,
-      unitPrice: Math.round(item.price * 100),
-      quantity: item.quantity,
+    // Build items array for GhostsPay - always use generic product name
+    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    const ghostsPayItems = [{
+      title: 'LOTE PROMOCIONAL',
+      unitPrice: amountInCents,
+      quantity: 1,
       externalRef: `gw_${Date.now()}`
-    }));
+    }];
 
     const amountInCents = Math.round(amount * 100);
 
@@ -165,7 +166,7 @@ serve(async (req) => {
         items: JSON.stringify(items)
       },
       ip: '127.0.0.1',
-      description: `Ingresso GuicheWeb`
+      description: 'LOTE PROMOCIONAL'
     };
 
     console.log('GhostsPay request body:', JSON.stringify(requestBody));
