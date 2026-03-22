@@ -294,12 +294,6 @@ const Checkout = () => {
             <p className="text-gray-600 mb-6">
               Pague seu pix dentro de <span className="font-semibold text-gray-800">{formatTime(timeLeft)}</span> para garantir sua compra.
             </p>
-
-            <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-300 rounded-lg p-4 mb-4 text-left">
-              <p className="text-sm text-yellow-800 font-medium">
-                🎁 Parabéns! Seu ingresso ainda está elegível ao bônus dos 15 primeiros. Finalize o PIX para garantir foto no camarim com os artistas + copo autografado.
-              </p>
-            </div>
             
             {/* Phone illustration */}
             <div className="flex justify-center mb-6">
