@@ -72,11 +72,11 @@ const PaymentSuccess = () => {
                   Se o processo levar mais de <strong>2 horas</strong>, por favor envie o nome utilizado na compra, e-mail e comprovante de pagamento para o WhatsApp:
                 </p>
                 <div className="flex flex-col gap-1 text-sm text-yellow-800 font-medium mb-3">
-                  <a href="https://wa.me/5516920032573" target="_blank" rel="noopener noreferrer" className="hover:underline">
-                    📱 (16) 92003-2573
+                  <a href="https://wa.me/5569999000598" target="_blank" rel="noopener noreferrer" className="hover:underline">
+                    📱 (69) 99900-0598
                   </a>
-                  <a href="https://wa.me/5516920032575" target="_blank" rel="noopener noreferrer" className="hover:underline">
-                    📱 (16) 92003-2575
+                  <a href="https://wa.me/5569920009196" target="_blank" rel="noopener noreferrer" className="hover:underline">
+                    📱 (69) 92000-9196
                   </a>
                   <span className="text-yellow-600 text-xs">(responsáveis por esse evento)</span>
                 </div>
