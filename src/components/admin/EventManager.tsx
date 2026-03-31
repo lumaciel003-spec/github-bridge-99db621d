@@ -282,6 +282,9 @@ const EventManager = () => {
         setShowEventDialog(false);
         resetEventForm();
         fetchEvents();
+      } else {
+        const errMsg = data.error || "Erro ao salvar evento";
+        toast({ title: "Erro", description: errMsg, variant: "destructive" });
       }
     } catch (error) {
       console.error("Error saving event:", error);
