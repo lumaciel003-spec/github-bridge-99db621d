@@ -120,11 +120,29 @@ serve(async (req) => {
         // Sanitize HTML description
         const sanitizedDescription = sanitizeHtml(data.description || '');
         
+        // Generate unique slug - append suffix if slug already exists
+        let slug = data.slug;
+        const { data: existingSlugs } = await supabase
+          .from("events")
+          .select("slug")
+          .like("slug", `${slug}%`);
+        
+        if (existingSlugs && existingSlugs.length > 0) {
+          const existing = existingSlugs.map(e => e.slug);
+          if (existing.includes(slug)) {
+            let counter = 2;
+            while (existing.includes(`${slug}-${counter}`)) {
+              counter++;
+            }
+            slug = `${slug}-${counter}`;
+          }
+        }
+        
         const { data: event, error } = await supabase
           .from("events")
           .insert({
             name: data.name,
-            slug: data.slug,
+            slug,
             description: sanitizedDescription,
             location: data.location,
             event_date: data.event_date,
